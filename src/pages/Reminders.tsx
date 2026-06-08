@@ -1,48 +1,53 @@
 import { useState, useMemo } from 'react';
-import { Bell, Check, Calendar, User, AlertTriangle, Clock, Target, CheckCircle, Filter, UserCheck } from 'lucide-react';
+import { Bell, Check, Calendar, User, AlertTriangle, Clock, Target, CheckCircle, Filter, UserCheck, X, MessageSquare, Search } from 'lucide-react';
 import { useCRMStore } from '@/store/useCRMStore';
 import { formatDate, getPriorityColor, getPriorityLabel } from '@/utils/format';
 import { cn } from '@/lib/utils';
 
-type TabType = 'all' | 'today' | 'high' | 'completed';
-
 export default function Reminders() {
   const { 
-    reminders, 
     teams,
     salesPeople,
     followUpFilters,
     setFollowUpFilters,
+    reminderFilters,
+    setReminderFilters,
     getFilteredReminders,
+    getFilteredRemindersByScope,
     markReminderRead, 
     markReminderCompleted,
     markAllRemindersRead,
+    reminders,
   } = useCRMStore();
   
-  const [activeTab, setActiveTab] = useState<TabType>('all');
-  const [selectedType, setSelectedType] = useState<string>('all');
+  const [handleModal, setHandleModal] = useState<{ open: boolean; reminderId?: string }>({ open: false });
+  const [handleNote, setHandleNote] = useState('');
+  const [searchKeyword, setSearchKeyword] = useState('');
   
   const filteredRemindersByScope = useMemo(
-    () => getFilteredReminders(), 
-    [getFilteredReminders, followUpFilters, reminders]
+    () => getFilteredRemindersByScope(), 
+    [getFilteredRemindersByScope, followUpFilters, reminders]
   );
   
   const filteredReminders = useMemo(() => {
-    return filteredRemindersByScope.filter(r => {
-      if (activeTab === 'today' && r.type !== 'visit') return false;
-      if (activeTab === 'high' && r.priority !== 'high') return false;
-      if (activeTab === 'completed' && !r.isCompleted) return false;
-      if (activeTab !== 'completed' && r.isCompleted) return false;
-      if (selectedType !== 'all' && r.type !== selectedType) return false;
-      return true;
-    });
-  }, [filteredRemindersByScope, activeTab, selectedType]);
+    const list = getFilteredReminders();
+    if (!searchKeyword) return list;
+    const kw = searchKeyword.toLowerCase();
+    return list.filter(r => 
+      r.title.toLowerCase().includes(kw) ||
+      r.content.toLowerCase().includes(kw) ||
+      r.salesPersonName.toLowerCase().includes(kw) ||
+      (r.customerName && r.customerName.toLowerCase().includes(kw)) ||
+      (r.handleNote && r.handleNote.toLowerCase().includes(kw)) ||
+      (r.handledBy && r.handledBy.toLowerCase().includes(kw))
+    );
+  }, [getFilteredReminders, reminderFilters, followUpFilters, reminders, searchKeyword]);
   
-  const tabs: { key: TabType; label: string; count: number }[] = [
-    { key: 'all', label: '全部提醒', count: filteredRemindersByScope.filter(r => !r.isCompleted).length },
-    { key: 'today', label: '今日必访', count: filteredRemindersByScope.filter(r => r.type === 'visit' && !r.isCompleted).length },
-    { key: 'high', label: '高优先级', count: filteredRemindersByScope.filter(r => r.priority === 'high' && !r.isCompleted).length },
-    { key: 'completed', label: '已处理', count: filteredRemindersByScope.filter(r => r.isCompleted).length },
+  const tabs = [
+    { key: 'all' as const, label: '全部提醒', count: filteredRemindersByScope.filter(r => !r.isCompleted).length },
+    { key: 'today' as const, label: '今日必访', count: filteredRemindersByScope.filter(r => r.type === 'visit' && !r.isCompleted).length },
+    { key: 'high' as const, label: '高优先级', count: filteredRemindersByScope.filter(r => r.priority === 'high' && !r.isCompleted).length },
+    { key: 'completed' as const, label: '已处理', count: filteredRemindersByScope.filter(r => r.isCompleted).length },
   ];
   
   const typeOptions = [
@@ -73,8 +78,17 @@ export default function Reminders() {
     }
   };
   
-  const handleComplete = (id: string) => {
-    markReminderCompleted(id);
+  const openHandleModal = (id: string) => {
+    setHandleModal({ open: true, reminderId: id });
+    setHandleNote('');
+  };
+  
+  const confirmHandle = () => {
+    if (handleModal.reminderId) {
+      markReminderCompleted(handleModal.reminderId, handleNote || undefined);
+    }
+    setHandleModal({ open: false });
+    setHandleNote('');
   };
   
   const handleRead = (id: string) => {
@@ -93,6 +107,14 @@ export default function Reminders() {
     setFollowUpFilters({ salesPersonId: salesPersonId || undefined });
   };
   
+  const handleTypeChange = (type: string) => {
+    setReminderFilters({ type });
+  };
+  
+  const handleTabChange = (tab: 'all' | 'today' | 'high' | 'completed') => {
+    setReminderFilters({ activeTab: tab });
+  };
+  
   const filteredSalesPeople = followUpFilters.teamId
     ? salesPeople.filter(sp => sp.teamId === followUpFilters.teamId)
     : salesPeople;
@@ -101,7 +123,7 @@ export default function Reminders() {
   const highPriorityCount = filteredRemindersByScope.filter(r => r.priority === 'high' && !r.isCompleted).length;
   const todayCount = filteredRemindersByScope.filter(r => r.type === 'visit' && !r.isCompleted).length;
   const completedCount = filteredRemindersByScope.filter(r => r.isCompleted).length;
-  const unreadCount = filteredRemindersByScope.filter(r => !r.isRead && !r.isCompleted).length;
+  const unreadCount = filteredReminders.filter(r => !r.isRead && !r.isCompleted).length;
   
   const formatHandledAt = (dateStr?: string) => {
     if (!dateStr) return '';
@@ -116,7 +138,7 @@ export default function Reminders() {
           <h1 className="text-2xl font-bold text-slate-800">提醒中心</h1>
           <p className="text-sm text-slate-500 mt-1">查看和处理所有待办提醒事项</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <select
             value={followUpFilters.teamId || ''}
             onChange={(e) => handleTeamChange(e.target.value)}
@@ -134,8 +156,8 @@ export default function Reminders() {
             {filteredSalesPeople.map(sp => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
           </select>
           <select
-            value={selectedType}
-            onChange={(e) => setSelectedType(e.target.value)}
+            value={reminderFilters.type}
+            onChange={(e) => handleTypeChange(e.target.value)}
             className="px-3 py-2 border border-slate-200 bg-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400"
           >
             {typeOptions.map(opt => (
@@ -210,28 +232,42 @@ export default function Reminders() {
       
       <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
         <div className="border-b border-slate-100">
-          <nav className="flex">
-            {tabs.map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={cn(
-                  'px-6 py-4 text-sm font-medium border-b-2 transition-colors',
-                  activeTab === tab.key
-                    ? 'text-primary-600 border-primary-500 bg-primary-50/50'
-                    : 'text-slate-500 border-transparent hover:text-slate-700 hover:bg-slate-50'
-                )}
-              >
-                {tab.label}
-                <span className={cn(
-                  'ml-2 px-2 py-0.5 text-xs rounded-full',
-                  activeTab === tab.key ? 'bg-primary-100 text-primary-600' : 'bg-slate-100 text-slate-500'
-                )}>
-                  {tab.count}
-                </span>
-              </button>
-            ))}
-          </nav>
+          <div className="flex items-center justify-between px-4">
+            <nav className="flex">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => handleTabChange(tab.key)}
+                  className={cn(
+                    'px-6 py-4 text-sm font-medium border-b-2 transition-colors',
+                    reminderFilters.activeTab === tab.key
+                      ? 'text-primary-600 border-primary-500 bg-primary-50/50'
+                      : 'text-slate-500 border-transparent hover:text-slate-700 hover:bg-slate-50'
+                  )}
+                >
+                  {tab.label}
+                  <span className={cn(
+                    'ml-2 px-2 py-0.5 text-xs rounded-full',
+                    reminderFilters.activeTab === tab.key ? 'bg-primary-100 text-primary-600' : 'bg-slate-100 text-slate-500'
+                  )}>
+                    {tab.count}
+                  </span>
+                </button>
+              ))}
+            </nav>
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="搜索标题、内容、备注..."
+                  value={searchKeyword}
+                  onChange={(e) => setSearchKeyword(e.target.value)}
+                  className="pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400 w-56"
+                />
+              </div>
+            </div>
+          </div>
         </div>
         
         <div className="divide-y divide-slate-50">
@@ -289,11 +325,18 @@ export default function Reminders() {
                       </div>
                       
                       {reminder.isCompleted && reminder.handledAt && (
-                        <div className="flex items-center gap-1 mt-2 text-xs text-slate-400">
-                          <UserCheck className="w-3.5 h-3.5" />
-                          <span>
-                            {reminder.handledBy || '系统'} 于 {formatHandledAt(reminder.handledAt)} 处理
-                          </span>
+                        <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-100">
+                          <div className="flex items-center gap-2 text-xs text-slate-500 mb-2">
+                            <UserCheck className="w-4 h-4" />
+                            <span className="font-medium text-slate-700">{reminder.handledBy || '系统'}</span>
+                            <span>于 {formatHandledAt(reminder.handledAt)} 处理</span>
+                          </div>
+                          {reminder.handleNote && (
+                            <div className="flex items-start gap-2 text-sm">
+                              <MessageSquare className="w-4 h-4 text-slate-400 mt-0.5 flex-shrink-0" />
+                              <p className="text-slate-600">{reminder.handleNote}</p>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -303,7 +346,7 @@ export default function Reminders() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleComplete(reminder.id);
+                            openHandleModal(reminder.id);
                           }}
                           className="px-3 py-1.5 bg-success-500 text-white text-sm rounded-lg hover:bg-success-600 transition-colors flex items-center gap-1"
                         >
@@ -347,6 +390,51 @@ export default function Reminders() {
           </div>
         )}
       </div>
+      
+      {handleModal.open && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl w-full max-w-md mx-4 shadow-2xl">
+            <div className="flex items-center justify-between p-5 border-b border-slate-100">
+              <h3 className="text-lg font-semibold text-slate-800">处理提醒</h3>
+              <button
+                onClick={() => setHandleModal({ open: false })}
+                className="p-1 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  处理备注 <span className="text-slate-400 font-normal">（选填）</span>
+                </label>
+                <textarea
+                  value={handleNote}
+                  onChange={(e) => setHandleNote(e.target.value)}
+                  placeholder="请输入处理备注，方便后续复盘..."
+                  rows={4}
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400 resize-none"
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3 p-5 border-t border-slate-100 bg-slate-50 rounded-b-2xl">
+              <button
+                onClick={() => setHandleModal({ open: false })}
+                className="px-4 py-2 border border-slate-200 text-slate-600 text-sm rounded-lg hover:bg-white transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={confirmHandle}
+                className="px-4 py-2 bg-gradient-to-r from-success-500 to-success-600 text-white text-sm rounded-lg hover:shadow-lg hover:shadow-success-500/30 transition-all flex items-center gap-2"
+              >
+                <Check className="w-4 h-4" />
+                确认处理
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

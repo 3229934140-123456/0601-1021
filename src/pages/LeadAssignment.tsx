@@ -1,11 +1,20 @@
 import { useState } from 'react';
-import { UserPlus, Users, Shuffle, BarChart3, ArrowRight, Check, RefreshCw } from 'lucide-react';
+import { UserPlus, Users, Shuffle, BarChart3, ArrowRight, Check, RefreshCw, Download, History, Filter } from 'lucide-react';
 import { useCRMStore } from '@/store/useCRMStore';
 import { formatDate, getStatusColor, getStatusLabel } from '@/utils/format';
 import { cn } from '@/lib/utils';
 
 export default function LeadAssignment() {
-  const { leads, salesPeople, assignLead, batchAssignLeads } = useCRMStore();
+  const { 
+    leads, 
+    salesPeople, 
+    assignLead, 
+    batchAssignLeads,
+    assignmentRecords,
+    getFilteredAssignments,
+    assignmentFilters,
+    setAssignmentFilters,
+  } = useCRMStore();
   const [selectedStrategy, setSelectedStrategy] = useState<'round_robin' | 'load_balance' | 'industry_match'>('load_balance');
   const [isAssigning, setIsAssigning] = useState(false);
   
@@ -14,6 +23,7 @@ export default function LeadAssignment() {
   const contactedLeads = leads.filter(l => l.status === 'contacted');
   
   const activeSales = salesPeople.filter(s => s.role === 'sales');
+  const filteredAssignments = getFilteredAssignments();
   
   const handleBatchAssign = () => {
     setIsAssigning(true);
@@ -21,6 +31,36 @@ export default function LeadAssignment() {
       batchAssignLeads(selectedStrategy);
       setIsAssigning(false);
     }, 1000);
+  };
+  
+  const handleExportRecords = () => {
+    const records = filteredAssignments;
+    const csv = [
+      ['分配时间', '线索名称', '公司', '分配给', '分配策略', '操作人'],
+      ...records.map(r => [
+        formatDate(r.assignedAt),
+        r.leadName,
+        r.leadCompany,
+        r.salesPersonName,
+        strategyLabels[r.strategy] || r.strategy,
+        r.assignedBy,
+      ])
+    ].map(row => row.join(',')).join('\n');
+    
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `分配记录_${new Date().toLocaleDateString()}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+  
+  const strategyLabels: Record<string, string> = {
+    round_robin: '轮询分配',
+    load_balance: '负载均衡',
+    industry_match: '行业匹配',
+    manual: '手动分配',
   };
   
   const strategies = [
@@ -266,6 +306,116 @@ export default function LeadAssignment() {
               ))}
             </div>
           </div>
+        </div>
+      </div>
+      
+      <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <History className="w-5 h-5 text-primary-500" />
+            <h3 className="font-semibold text-slate-800">分配记录中心</h3>
+            <span className="text-sm text-slate-500">共 {filteredAssignments.length} 条记录</span>
+          </div>
+          <button
+            onClick={handleExportRecords}
+            className="px-3 py-1.5 border border-slate-200 bg-white rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors flex items-center gap-1"
+          >
+            <Download className="w-4 h-4" />
+            导出记录
+          </button>
+        </div>
+        
+        <div className="px-5 py-3 border-b border-slate-50 bg-slate-50/50">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">销售人员</label>
+              <select
+                value={assignmentFilters.salesPersonId || ''}
+                onChange={(e) => setAssignmentFilters({ salesPersonId: e.target.value || undefined })}
+                className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400"
+              >
+                <option value="">全部销售</option>
+                {activeSales.map(sp => (
+                  <option key={sp.id} value={sp.id}>{sp.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">分配策略</label>
+              <select
+                value={assignmentFilters.strategy || ''}
+                onChange={(e) => setAssignmentFilters({ strategy: e.target.value || undefined })}
+                className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400"
+              >
+                <option value="">全部策略</option>
+                <option value="round_robin">轮询分配</option>
+                <option value="load_balance">负载均衡</option>
+                <option value="industry_match">行业匹配</option>
+                <option value="manual">手动分配</option>
+              </select>
+            </div>
+            <div className="md:col-span-2">
+              <label className="text-xs text-slate-500 mb-1 block">关键词</label>
+              <input
+                type="text"
+                placeholder="搜索线索名称、公司、销售姓名..."
+                value={assignmentFilters.keyword || ''}
+                onChange={(e) => setAssignmentFilters({ keyword: e.target.value || undefined })}
+                className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400"
+              />
+            </div>
+          </div>
+        </div>
+        
+        <div className="divide-y divide-slate-50 max-h-[480px] overflow-y-auto">
+          {filteredAssignments.length > 0 ? (
+            filteredAssignments.map((record) => (
+              <div key={record.id} className="px-5 py-4 hover:bg-slate-50 transition-colors">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white text-sm font-medium flex-shrink-0">
+                      {record.salesPersonName?.charAt(0)}
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-slate-800">{record.leadName}</h4>
+                      <p className="text-sm text-slate-500">{record.leadCompany}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-6">
+                    <div className="text-right">
+                      <p className="text-xs text-slate-400">分配给</p>
+                      <p className="text-sm font-medium text-slate-700">{record.salesPersonName}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-slate-400">分配策略</p>
+                      <span className={cn(
+                        'inline-block px-2 py-0.5 text-xs rounded-full',
+                        record.strategy === 'manual' 
+                          ? 'bg-warning-50 text-warning-600' 
+                          : 'bg-primary-50 text-primary-600'
+                      )}>
+                        {strategyLabels[record.strategy] || record.strategy}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-slate-400">操作人</p>
+                      <p className="text-sm text-slate-600">{record.assignedBy}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-slate-400">分配时间</p>
+                      <p className="text-sm text-slate-600">{formatDate(record.assignedAt)}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="py-16 text-center">
+              <History className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+              <p className="text-slate-500">暂无分配记录</p>
+            </div>
+          )}
         </div>
       </div>
     </div>

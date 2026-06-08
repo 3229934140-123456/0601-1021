@@ -71,6 +71,7 @@ export interface Reminder {
   createdAt: string;
   handledAt?: string;
   handledBy?: string;
+  handleNote?: string;
 }
 
 export interface Lead {
@@ -193,4 +194,16 @@ export interface ExclusionItem {
   reason: string;
   excludedBy: string;
   excludedAt: string;
+}
+
+export interface AssignmentRecord {
+  id: string;
+  leadId: string;
+  leadName: string;
+  leadCompany: string;
+  salesPersonId: string;
+  salesPersonName: string;
+  strategy: 'round_robin' | 'load_balance' | 'industry_match' | 'manual';
+  assignedBy: string;
+  assignedAt: string;
 }

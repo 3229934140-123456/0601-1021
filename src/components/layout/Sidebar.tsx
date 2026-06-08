@@ -11,9 +11,10 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import { useCRMStore } from '@/store/useCRMStore';
 
 const menuItems = [
   { path: '/dashboard', label: '仪表盘', icon: LayoutDashboard },
@@ -34,6 +35,22 @@ interface SidebarProps {
 
 export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const location = useLocation();
+  const { reminders, getFilteredRemindersByScope } = useCRMStore();
+  
+  const unreadCount = useMemo(() => {
+    return reminders.filter(r => !r.isRead).length;
+  }, [reminders]);
+  
+  const todayTodoCount = useMemo(() => {
+    return reminders.filter(r => {
+      if (r.isCompleted) return false;
+      return r.type === 'visit' || r.type === 'follow_up' || r.type === 'deadline';
+    }).length;
+  }, [reminders]);
+  
+  const highPriorityCount = useMemo(() => {
+    return reminders.filter(r => !r.isCompleted && r.priority === 'high').length;
+  }, [reminders]);
   
   return (
     <aside
@@ -89,9 +106,9 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
                   {!collapsed && (
                     <span className="text-sm font-medium">{item.label}</span>
                   )}
-                  {!collapsed && item.path === '/reminders' && (
+                  {!collapsed && item.path === '/reminders' && unreadCount > 0 && (
                     <span className="ml-auto bg-warning-500 text-white text-xs px-2 py-0.5 rounded-full font-bold">
-                      24
+                      {unreadCount}
                     </span>
                   )}
                 </NavLink>
@@ -108,11 +125,11 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
             <div className="space-y-2 px-3">
               <div className="flex justify-between text-sm">
                 <span className="text-primary-300">今日待办</span>
-                <span className="text-accent-400 font-semibold">8</span>
+                <span className="text-accent-400 font-semibold">{todayTodoCount}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-primary-300">高优先级</span>
-                <span className="text-warning-400 font-semibold">3</span>
+                <span className="text-warning-400 font-semibold">{highPriorityCount}</span>
               </div>
             </div>
           </div>

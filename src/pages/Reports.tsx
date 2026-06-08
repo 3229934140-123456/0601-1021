@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { BarChart3, Download, FileText, Calendar, TrendingUp, Users, DollarSign, Target } from 'lucide-react';
+import { BarChart3, Download, FileText, Calendar, TrendingUp, Users, DollarSign, Target, MapPin } from 'lucide-react';
 import { useCRMStore } from '@/store/useCRMStore';
 import { formatMoney, formatDate } from '@/utils/format';
 import { cn } from '@/lib/utils';
@@ -15,6 +15,7 @@ export default function Reports() {
     regionStats, 
     customers, 
     opportunities,
+    followUpRecords,
     salesPeople,
     teams,
     lostReasons,
@@ -25,13 +26,46 @@ export default function Reports() {
   
   const [activeTab, setActiveTab] = useState<TabType>('daily');
   
-  const filteredTrendData = useMemo(() => getFilteredTrendData(), [getFilteredTrendData, reportFilters, trendData]);
+  const filteredTrendData = useMemo(() => getFilteredTrendData(), [getFilteredTrendData, reportFilters, trendData, dailyReports]);
   
   const daysCount = reportFilters.dateRange === '7days' ? 7 : 
                     reportFilters.dateRange === '30days' ? 30 : 90;
   
+  const filteredTeams = useMemo(() => {
+    if (reportFilters.teamId) {
+      return teams.filter(t => t.id === reportFilters.teamId);
+    }
+    return teams;
+  }, [teams, reportFilters.teamId]);
+  
+  const filteredCustomers = useMemo(() => {
+    if (reportFilters.teamId) {
+      return customers.filter(c => c.teamId === reportFilters.teamId);
+    }
+    return customers;
+  }, [customers, reportFilters.teamId]);
+  
+  const filteredOpportunities = useMemo(() => {
+    if (reportFilters.teamId) {
+      return opportunities.filter(o => {
+        const cust = customers.find(c => c.id === o.customerId);
+        return cust?.teamId === reportFilters.teamId;
+      });
+    }
+    return opportunities;
+  }, [opportunities, customers, reportFilters.teamId]);
+  
+  const filteredSalesPeople = useMemo(() => {
+    if (reportFilters.teamId) {
+      return salesPeople.filter(sp => sp.teamId === reportFilters.teamId);
+    }
+    return salesPeople;
+  }, [salesPeople, reportFilters.teamId]);
+  
   const computedDailyReports = useMemo(() => {
-    return teams.map(team => {
+    const daysAgo = Date.now() - daysCount * 24 * 60 * 60 * 1000;
+    
+    return filteredTeams.map(team => {
       const teamCustomers = customers.filter(c => c.teamId === team.id);
       const teamCustomerIds = teamCustomers.map(c => c.id);
       const teamOpps = opportunities.filter(o => teamCustomerIds.includes(o.customerId));
@@ -39,14 +73,24 @@ export default function Reports() {
       const activeOpps = teamOpps.filter(o => o.status === 'active');
       
       const recentOpps = teamOpps.filter(o => {
-        if (!o.createdAt) return true;
-        const daysDiff = (Date.now() - new Date(o.createdAt).getTime()) / (1000 * 60 * 60 * 24);
-        return daysDiff <= daysCount;
+        if (!o.createdAt) return false;
+        return new Date(o.createdAt).getTime() >= daysAgo;
       });
       
       const recentNewCustomers = teamCustomers.filter(c => {
-        const daysDiff = (Date.now() - new Date(c.createdAt || Date.now()).getTime()) / (1000 * 60 * 60 * 24);
-        return daysDiff <= daysCount;
+        if (!c.createdAt) return false;
+        return new Date(c.createdAt).getTime() >= daysAgo;
+      });
+      
+      const recentWonOpps = teamOpps.filter(o => {
+        if (o.status !== 'won' || !o.updatedAt) return false;
+        return new Date(o.updatedAt).getTime() >= daysAgo;
+      });
+      
+      const teamFollowUps = followUpRecords.filter(f => teamCustomerIds.includes(f.customerId));
+      const recentFollowUps = teamFollowUps.filter(f => {
+        if (!f.date) return false;
+        return new Date(f.date).getTime() >= daysAgo;
       });
       
       return {
@@ -60,14 +104,20 @@ export default function Reports() {
         wonOpportunities: wonOpps.length,
         totalAmount: teamOpps.reduce((s, o) => s + o.amount, 0),
         wonAmount: wonOpps.reduce((s, o) => s + o.amount, 0),
-        followUpCount: Math.round(teamCustomers.length * 2.5 * (daysCount / 30)),
+        followUpCount: recentFollowUps.length,
         exceptionCount: Math.round(teamOpps.length * 0.15),
         periodNewCustomers: recentNewCustomers.length,
         periodNewOpps: recentOpps.length,
-        periodWonAmount: wonOpps.reduce((s, o) => s + o.amount, 0) * (daysCount / 90),
+        periodWonAmount: recentWonOpps.reduce((s, o) => s + o.amount, 0),
       };
     });
-  }, [customers, opportunities, teams, daysCount]);
+  }, [customers, opportunities, followUpRecords, filteredTeams, daysCount]);
+  
+  const totalPeriodNewCustomers = computedDailyReports.reduce((s, r) => s + r.periodNewCustomers, 0);
+  const totalPeriodNewOpps = computedDailyReports.reduce((s, r) => s + r.periodNewOpps, 0);
+  const totalWonAmount = filteredOpportunities.filter(o => o.status === 'won').reduce((s, o) => s + o.amount, 0);
+  const totalAmount = filteredOpportunities.reduce((s, o) => s + o.amount, 0);
+  const avgOutput = filteredSalesPeople.length > 0 ? totalWonAmount / filteredSalesPeople.length : 0;
   
   const tabs = [
     { key: 'daily', label: '团队日报', icon: FileText },
@@ -88,6 +138,10 @@ export default function Reports() {
     setReportFilters({ dateRange: range });
   };
   
+  const handleTeamChange = (teamId: string) => {
+    setReportFilters({ teamId: teamId || undefined });
+  };
+  
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -96,6 +150,16 @@ export default function Reports() {
           <p className="text-sm text-slate-500 mt-1">多维度数据分析报表，辅助决策</p>
         </div>
         <div className="flex items-center gap-2">
+          <select
+            value={reportFilters.teamId || ''}
+            onChange={(e) => handleTeamChange(e.target.value)}
+            className="px-3 py-2 border border-slate-200 bg-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400"
+          >
+            <option value="">全部团队</option>
+            {teams.map(t => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
           <div className="flex bg-slate-100 rounded-lg p-0.5">
             {(['7days', '30days', '90days'] as const).map((range) => (
               <button
@@ -128,52 +192,52 @@ export default function Reports() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-primary-100">总客户数</p>
-              <p className="text-3xl font-bold mt-1">{customers.length}</p>
+              <p className="text-3xl font-bold mt-1">{filteredCustomers.length}</p>
             </div>
             <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
               <Users className="w-6 h-6" />
             </div>
           </div>
-          <p className="text-xs text-primary-200 mt-3">{periodLabels[reportFilters.dateRange]}新增 {computedDailyReports.reduce((s, r) => s + r.periodNewCustomers, 0)} 个</p>
+          <p className="text-xs text-primary-200 mt-3">{periodLabels[reportFilters.dateRange]}新增 {totalPeriodNewCustomers} 个</p>
         </div>
         
         <div className="bg-gradient-to-br from-accent-500 to-accent-700 rounded-xl p-5 text-white">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-accent-100">商机总额</p>
-              <p className="text-3xl font-bold mt-1">{formatMoney(opportunities.reduce((s, o) => s + o.amount, 0))}</p>
+              <p className="text-3xl font-bold mt-1">{formatMoney(totalAmount)}</p>
             </div>
             <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
               <DollarSign className="w-6 h-6" />
             </div>
           </div>
-          <p className="text-xs text-accent-200 mt-3">{periodLabels[reportFilters.dateRange]}新增 {computedDailyReports.reduce((s, r) => s + r.periodNewOpps, 0)} 个商机</p>
+          <p className="text-xs text-accent-200 mt-3">{periodLabels[reportFilters.dateRange]}新增 {totalPeriodNewOpps} 个商机</p>
         </div>
         
         <div className="bg-gradient-to-br from-success-500 to-success-700 rounded-xl p-5 text-white">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-success-100">成交金额</p>
-              <p className="text-3xl font-bold mt-1">{formatMoney(opportunities.filter(o => o.status === 'won').reduce((s, o) => s + o.amount, 0))}</p>
+              <p className="text-3xl font-bold mt-1">{formatMoney(totalWonAmount)}</p>
             </div>
             <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
               <TrendingUp className="w-6 h-6" />
             </div>
           </div>
-          <p className="text-xs text-success-200 mt-3">成交率 23.5%</p>
+          <p className="text-xs text-success-200 mt-3">成交率 {filteredOpportunities.length > 0 ? Math.round(filteredOpportunities.filter(o => o.status === 'won').length / filteredOpportunities.length * 100) : 0}%</p>
         </div>
         
         <div className="bg-gradient-to-br from-warning-500 to-warning-700 rounded-xl p-5 text-white">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-warning-100">人均产出</p>
-              <p className="text-3xl font-bold mt-1">{formatMoney(opportunities.filter(o => o.status === 'won').reduce((s, o) => s + o.amount, 0) / salesPeople.length)}</p>
+              <p className="text-3xl font-bold mt-1">{formatMoney(avgOutput)}</p>
             </div>
             <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
               <BarChart3 className="w-6 h-6" />
             </div>
           </div>
-          <p className="text-xs text-warning-200 mt-3">团队均值</p>
+          <p className="text-xs text-warning-200 mt-3">{filteredSalesPeople.length} 名销售</p>
         </div>
       </div>
       
@@ -324,7 +388,7 @@ export default function Reports() {
                 <h3 className="font-semibold text-slate-800 mb-4">团队业绩对比</h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={teams.map(t => {
+                    <BarChart data={filteredTeams.map(t => {
                       const teamCustomers = customers.filter(c => c.teamId === t.id);
                       const teamOpps = opportunities.filter(o => {
                         const cust = customers.find(c => c.id === o.customerId);
@@ -363,7 +427,7 @@ export default function Reports() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
-                    {teams.map((team) => {
+                    {filteredTeams.map((team) => {
                       const teamCustomers = customers.filter(c => c.teamId === team.id);
                       const teamOpps = opportunities.filter(o => {
                         const cust = customers.find(c => c.id === o.customerId);
@@ -483,25 +547,5 @@ export default function Reports() {
         </div>
       </div>
     </div>
-  );
-}
-
-function MapPin(props: any) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
-      <circle cx="12" cy="10" r="3" />
-    </svg>
   );
 }

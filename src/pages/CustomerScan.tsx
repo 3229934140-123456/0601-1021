@@ -14,6 +14,7 @@ export default function CustomerScan() {
     excludeCustomer,
     batchExcludeCustomers,
     batchMarkHighValue,
+    batchCancelHighValue,
   } = useCRMStore();
   
   const [showFilters, setShowFilters] = useState(false);
@@ -74,13 +75,12 @@ export default function CustomerScan() {
     }
   };
   
-  const handleBatchHighValue = () => {
-    const hasHighValue = selectedCustomers.some(id => {
-      const c = customers.find(cust => cust.id === id);
-      return c?.isHighValue;
-    });
-    const allHighValue = hasHighValue ? false : true;
-    batchMarkHighValue(selectedCustomers, allHighValue);
+  const handleBatchMarkHighValue = () => {
+    batchMarkHighValue(selectedCustomers, true);
+  };
+  
+  const handleBatchCancelHighValue = () => {
+    batchCancelHighValue(selectedCustomers);
   };
   
   const handleBatchExclude = () => {
@@ -345,16 +345,18 @@ export default function CustomerScan() {
           </span>
           <div className="flex items-center gap-2">
             <button 
-              onClick={handleBatchHighValue}
-              className={cn(
-                'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1',
-                selectedAllHighValue
-                  ? 'bg-white border border-primary-200 text-primary-600 hover:bg-primary-50'
-                  : 'bg-white border border-primary-200 text-primary-600 hover:bg-primary-50'
-              )}
+              onClick={handleBatchMarkHighValue}
+              className="px-3 py-1.5 bg-white border border-primary-200 text-primary-600 rounded-lg text-sm font-medium hover:bg-primary-50 transition-colors flex items-center gap-1"
             >
               <Star className="w-4 h-4" />
-              {selectedAllHighValue ? '取消高价值' : '批量标记高价值'}
+              标记高价值
+            </button>
+            <button 
+              onClick={handleBatchCancelHighValue}
+              className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors flex items-center gap-1"
+            >
+              <Star className="w-4 h-4" />
+              取消高价值
             </button>
             <button 
               onClick={handleBatchExclude}

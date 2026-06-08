@@ -16,6 +16,7 @@ import type {
   ExclusionItem,
   IndustryStat,
   RegionStat,
+  AssignmentRecord,
 } from '@/types';
 
 interface CustomerFilters {
@@ -36,9 +37,25 @@ interface FollowUpFilters {
   salesPersonId?: string;
 }
 
+interface ReminderFilters {
+  type: string;
+  activeTab: 'all' | 'today' | 'high' | 'completed';
+}
+
+interface ExclusionFilters {
+  keyword?: string;
+  operator?: string;
+}
+
 interface ReportFilters {
   dateRange: '7days' | '30days' | '90days';
   teamId?: string;
+}
+
+interface AssignmentFilters {
+  keyword?: string;
+  salesPersonId?: string;
+  strategy?: string;
 }
 
 interface CRMState {
@@ -49,10 +66,14 @@ interface CRMState {
   leads: Lead[];
   exclusions: ExclusionItem[];
   exceptions: ExceptionItem[];
+  assignmentRecords: AssignmentRecord[];
   
   customerFilters: CustomerFilters;
   followUpFilters: FollowUpFilters;
+  reminderFilters: ReminderFilters;
+  exclusionFilters: ExclusionFilters;
   reportFilters: ReportFilters;
+  assignmentFilters: AssignmentFilters;
   
   baseCustomers: Customer[];
   baseOpportunities: Opportunity[];
@@ -74,7 +95,10 @@ interface CRMState {
 interface CRMActions {
   setCustomerFilters: (filters: Partial<CustomerFilters>) => void;
   setFollowUpFilters: (filters: Partial<FollowUpFilters>) => void;
+  setReminderFilters: (filters: Partial<ReminderFilters>) => void;
+  setExclusionFilters: (filters: Partial<ExclusionFilters>) => void;
   setReportFilters: (filters: Partial<ReportFilters>) => void;
+  setAssignmentFilters: (filters: Partial<AssignmentFilters>) => void;
   
   getFilteredCustomers: () => Customer[];
   getFilteredFollowUps: () => FollowUpRecord[];
@@ -82,11 +106,14 @@ interface CRMActions {
   getFilteredIncompleteContacts: () => Customer[];
   getFilteredLongStageOpps: () => Opportunity[];
   getFilteredReminders: () => Reminder[];
+  getFilteredRemindersByScope: () => Reminder[];
+  getFilteredExclusions: () => ExclusionItem[];
   getFilteredTrendData: () => TrendDataPoint[];
+  getFilteredAssignments: () => AssignmentRecord[];
   
   markReminderRead: (id: string) => void;
   markAllRemindersRead: () => void;
-  markReminderCompleted: (id: string) => void;
+  markReminderCompleted: (id: string, note?: string) => void;
   
   assignLead: (leadId: string, salesPersonId: string) => void;
   batchAssignLeads: (strategy: 'round_robin' | 'load_balance' | 'industry_match') => void;
@@ -97,6 +124,7 @@ interface CRMActions {
   
   toggleHighValue: (customerId: string, isHighValue: boolean) => void;
   batchMarkHighValue: (customerIds: string[], isHighValue: boolean) => void;
+  batchCancelHighValue: (customerIds: string[]) => void;
   
   resolveException: (exceptionId: string) => void;
   
@@ -107,6 +135,8 @@ type CRMStore = CRMState & CRMActions;
 
 const initialState: CRMState = {
   ...mockData,
+  
+  assignmentRecords: [],
   
   baseCustomers: mockData.customers,
   baseOpportunities: mockData.opportunities,
@@ -122,9 +152,18 @@ const initialState: CRMState = {
   
   followUpFilters: {},
   
+  reminderFilters: {
+    type: 'all',
+    activeTab: 'all',
+  },
+  
+  exclusionFilters: {},
+  
   reportFilters: {
     dateRange: '30days',
   },
+  
+  assignmentFilters: {},
 };
 
 export const useCRMStore = create<CRMStore>()(
@@ -142,6 +181,18 @@ export const useCRMStore = create<CRMStore>()(
       
       setReportFilters: (filters) => set((state) => ({
         reportFilters: { ...state.reportFilters, ...filters },
+      })),
+      
+      setReminderFilters: (filters) => set((state) => ({
+        reminderFilters: { ...state.reminderFilters, ...filters },
+      })),
+      
+      setExclusionFilters: (filters) => set((state) => ({
+        exclusionFilters: { ...state.exclusionFilters, ...filters },
+      })),
+      
+      setAssignmentFilters: (filters) => set((state) => ({
+        assignmentFilters: { ...state.assignmentFilters, ...filters },
       })),
       
       getFilteredCustomers: () => {
@@ -255,7 +306,7 @@ export const useCRMStore = create<CRMStore>()(
         return result;
       },
       
-      getFilteredReminders: () => {
+      getFilteredRemindersByScope: () => {
         const { reminders, followUpFilters } = get();
         let result = [...reminders];
         
@@ -272,11 +323,90 @@ export const useCRMStore = create<CRMStore>()(
         return result;
       },
       
+      getFilteredReminders: () => {
+        const { reminderFilters } = get();
+        let result = get().getFilteredRemindersByScope();
+        
+        if (reminderFilters.type !== 'all') {
+          result = result.filter(r => r.type === reminderFilters.type);
+        }
+        
+        if (reminderFilters.activeTab === 'today') {
+          result = result.filter(r => r.type === 'visit' && !r.isCompleted);
+        } else if (reminderFilters.activeTab === 'high') {
+          result = result.filter(r => r.priority === 'high' && !r.isCompleted);
+        } else if (reminderFilters.activeTab === 'completed') {
+          result = result.filter(r => r.isCompleted);
+        } else {
+          result = result.filter(r => !r.isCompleted);
+        }
+        
+        return result;
+      },
+      
+      getFilteredExclusions: () => {
+        const { exclusions, exclusionFilters } = get();
+        let result = [...exclusions];
+        
+        if (exclusionFilters.keyword) {
+          const kw = exclusionFilters.keyword.toLowerCase();
+          result = result.filter(e => 
+            e.customerName.toLowerCase().includes(kw) ||
+            e.reason.toLowerCase().includes(kw)
+          );
+        }
+        
+        if (exclusionFilters.operator) {
+          result = result.filter(e => e.excludedBy === exclusionFilters.operator);
+        }
+        
+        return result.sort((a, b) => new Date(b.excludedAt).getTime() - new Date(a.excludedAt).getTime());
+      },
+      
       getFilteredTrendData: () => {
-        const { trendData, reportFilters } = get();
+        const { trendData, reportFilters, dailyReports, teams } = get();
         const days = reportFilters.dateRange === '7days' ? 7 : 
                      reportFilters.dateRange === '30days' ? 30 : 90;
-        return trendData.slice(-days);
+        let result = trendData.slice(-days);
+        
+        if (reportFilters.teamId) {
+          const teamReports = dailyReports
+            .filter(d => d.teamId === reportFilters.teamId)
+            .slice(-days);
+          result = teamReports.map(d => ({
+            date: d.date,
+            newCustomers: d.newCustomers,
+            newOpportunities: d.totalOpportunities > 0 ? Math.floor(d.totalOpportunities / 30) : 0,
+            followUps: d.followUpCount,
+            wonAmount: d.wonAmount,
+          }));
+        }
+        
+        return result;
+      },
+      
+      getFilteredAssignments: () => {
+        const { assignmentRecords, assignmentFilters } = get();
+        let result = [...assignmentRecords];
+        
+        if (assignmentFilters.salesPersonId) {
+          result = result.filter(a => a.salesPersonId === assignmentFilters.salesPersonId);
+        }
+        
+        if (assignmentFilters.strategy) {
+          result = result.filter(a => a.strategy === assignmentFilters.strategy);
+        }
+        
+        if (assignmentFilters.keyword) {
+          const kw = assignmentFilters.keyword.toLowerCase();
+          result = result.filter(a => 
+            a.leadName.toLowerCase().includes(kw) ||
+            a.leadCompany.toLowerCase().includes(kw) ||
+            a.salesPersonName.toLowerCase().includes(kw)
+          );
+        }
+        
+        return result.sort((a, b) => new Date(b.assignedAt).getTime() - new Date(a.assignedAt).getTime());
       },
       
       markReminderRead: (id) => set((state) => ({
@@ -284,53 +414,58 @@ export const useCRMStore = create<CRMStore>()(
       })),
       
       markAllRemindersRead: () => set((state) => {
-        const { followUpFilters } = state;
-        let filteredIds = state.reminders.filter(r => !r.isRead).map(r => r.id);
-        
-        if (followUpFilters.salesPersonId) {
-          filteredIds = state.reminders
-            .filter(r => r.salesPersonId === followUpFilters.salesPersonId && !r.isRead)
-            .map(r => r.id);
-        } else if (followUpFilters.teamId) {
-          const teamMemberIds = state.salesPeople
-            .filter(sp => sp.teamId === followUpFilters.teamId)
-            .map(sp => sp.id);
-          filteredIds = state.reminders
-            .filter(r => teamMemberIds.includes(r.salesPersonId) && !r.isRead)
-            .map(r => r.id);
-        }
+        const visibleReminders = get().getFilteredReminders();
+        const unreadIds = visibleReminders.filter(r => !r.isRead).map(r => r.id);
         
         return {
           reminders: state.reminders.map(r => 
-            filteredIds.includes(r.id) ? { ...r, isRead: true } : r
+            unreadIds.includes(r.id) ? { ...r, isRead: true } : r
           ),
         };
       }),
       
-      markReminderCompleted: (id) => set((state) => ({
+      markReminderCompleted: (id, note) => set((state) => ({
         reminders: state.reminders.map(r => r.id === id ? { 
           ...r, 
           isCompleted: true, 
           isRead: true,
           handledAt: new Date().toISOString(),
           handledBy: '张主管',
+          handleNote: note,
         } : r),
       })),
       
       assignLead: (leadId, salesPersonId) => {
         const sp = get().salesPeople.find(s => s.id === salesPersonId);
+        const lead = get().leads.find(l => l.id === leadId);
+        if (!sp || !lead) return;
+        
+        const now = new Date().toISOString();
+        const newRecord: AssignmentRecord = {
+          id: `as${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          leadId: lead.id,
+          leadName: lead.name,
+          leadCompany: lead.company,
+          salesPersonId: sp.id,
+          salesPersonName: sp.name,
+          strategy: 'manual',
+          assignedBy: '张主管',
+          assignedAt: now,
+        };
+        
         set((state) => ({
           leads: state.leads.map(l => l.id === leadId ? {
             ...l,
             status: 'assigned',
             assignedTo: salesPersonId,
             assignedToName: sp?.name,
-            assignedAt: new Date().toISOString().split('T')[0],
+            assignedAt: now.split('T')[0],
           } : l),
           salesPeople: state.salesPeople.map(s => s.id === salesPersonId ? {
             ...s,
             currentLoad: s.currentLoad + 5,
           } : s),
+          assignmentRecords: [...state.assignmentRecords, newRecord],
         }));
       },
       
@@ -365,6 +500,8 @@ export const useCRMStore = create<CRMStore>()(
           });
         }
         
+        const now = new Date().toISOString();
+        
         set((state) => {
           const updatedLeads = state.leads.map(l => {
             const pair = assignedPairs.find(p => p.leadId === l.id);
@@ -375,7 +512,7 @@ export const useCRMStore = create<CRMStore>()(
                 status: 'assigned' as const,
                 assignedTo: sp?.id,
                 assignedToName: sp?.name,
-                assignedAt: new Date().toISOString().split('T')[0],
+                assignedAt: now.split('T')[0],
               };
             }
             return l;
@@ -386,7 +523,27 @@ export const useCRMStore = create<CRMStore>()(
             return count > 0 ? { ...s, currentLoad: s.currentLoad + count * 5 } : s;
           });
           
-          return { leads: updatedLeads, salesPeople: updatedSales };
+          const newRecords: AssignmentRecord[] = assignedPairs.map(pair => {
+            const lead = state.leads.find(l => l.id === pair.leadId);
+            const sp = state.salesPeople.find(s => s.id === pair.salesPersonId);
+            return {
+              id: `as${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              leadId: pair.leadId,
+              leadName: lead?.name || '',
+              leadCompany: lead?.company || '',
+              salesPersonId: pair.salesPersonId,
+              salesPersonName: sp?.name || '',
+              strategy: strategy,
+              assignedBy: '张主管',
+              assignedAt: now,
+            };
+          });
+          
+          return { 
+            leads: updatedLeads, 
+            salesPeople: updatedSales,
+            assignmentRecords: [...state.assignmentRecords, ...newRecords],
+          };
         });
       },
       
@@ -451,6 +608,12 @@ export const useCRMStore = create<CRMStore>()(
         ),
       })),
       
+      batchCancelHighValue: (customerIds) => set((state) => ({
+        customers: state.customers.map(c => 
+          customerIds.includes(c.id) ? { ...c, isHighValue: false } : c
+        ),
+      })),
+      
       resolveException: (exceptionId) => set((state) => ({
         exceptions: state.exceptions.map(e => e.id === exceptionId ? { ...e, resolved: true } : e),
       })),
@@ -461,6 +624,7 @@ export const useCRMStore = create<CRMStore>()(
         const preservedExclusions = state.exclusions;
         const preservedExceptions = state.exceptions;
         const preservedCustomers = state.customers;
+        const preservedAssignments = state.assignmentRecords;
         
         const updatedCustomers = mockData.customers.map(c => {
           const preserved = preservedCustomers.find(pc => pc.id === c.id);
@@ -483,6 +647,7 @@ export const useCRMStore = create<CRMStore>()(
               isCompleted: preserved.isCompleted,
               handledAt: preserved.handledAt,
               handledBy: preserved.handledBy,
+              handleNote: preserved.handleNote,
             };
           }
           return r;
@@ -521,6 +686,7 @@ export const useCRMStore = create<CRMStore>()(
         );
         
         const allExclusions = [...preservedExclusions];
+        const allAssignments = [...preservedAssignments];
         
         return {
           ...mockData,
@@ -529,6 +695,7 @@ export const useCRMStore = create<CRMStore>()(
           leads: mergedLeads,
           exclusions: allExclusions,
           exceptions: [...mergedExceptions, ...extraPreservedExceptions],
+          assignmentRecords: allAssignments,
         };
       }),
     }),
@@ -541,9 +708,13 @@ export const useCRMStore = create<CRMStore>()(
         leads: state.leads,
         exclusions: state.exclusions,
         exceptions: state.exceptions,
+        assignmentRecords: state.assignmentRecords,
         customerFilters: state.customerFilters,
         followUpFilters: state.followUpFilters,
+        reminderFilters: state.reminderFilters,
+        exclusionFilters: state.exclusionFilters,
         reportFilters: state.reportFilters,
+        assignmentFilters: state.assignmentFilters,
       }),
     }
   )

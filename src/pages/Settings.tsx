@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 type TabType = 'teams' | 'exclusions' | 'scoring' | 'reminders';
 
 export default function SettingsPage() {
-  const { teams, salesPeople, exclusions, customers, removeExclusion, excludeCustomer } = useCRMStore();
+  const { teams, salesPeople, exclusions, customers, removeExclusion, excludeCustomer, getFilteredExclusions, exclusionFilters, setExclusionFilters } = useCRMStore();
   const [activeTab, setActiveTab] = useState<TabType>('teams');
   const [showAddExclusion, setShowAddExclusion] = useState(false);
   const [exclusionCustomerId, setExclusionCustomerId] = useState('');
@@ -176,10 +176,36 @@ export default function SettingsPage() {
                 </button>
               </div>
               
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-sm text-slate-600 mb-1.5 block">操作人</label>
+                  <select
+                    value={exclusionFilters.operator || ''}
+                    onChange={(e) => setExclusionFilters({ operator: e.target.value || undefined })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400"
+                  >
+                    <option value="">全部操作人</option>
+                    {salesPeople.map(sp => (
+                      <option key={sp.id} value={sp.name}>{sp.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="md:col-span-2">
+                  <label className="text-sm text-slate-600 mb-1.5 block">原因关键词</label>
+                  <input
+                    type="text"
+                    placeholder="搜索排除原因..."
+                    value={exclusionFilters.keyword || ''}
+                    onChange={(e) => setExclusionFilters({ keyword: e.target.value || undefined })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400"
+                  />
+                </div>
+              </div>
+              
               <div className="border border-slate-100 rounded-xl overflow-hidden">
-                {exclusions.length > 0 ? (
+                {getFilteredExclusions().length > 0 ? (
                   <div className="divide-y divide-slate-50">
-                    {exclusions.map((item) => (
+                    {getFilteredExclusions().map((item) => (
                       <div key={item.id} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
                         <div className="flex items-center gap-4">
                           <div className="w-10 h-10 rounded-lg bg-danger-50 flex items-center justify-center">
