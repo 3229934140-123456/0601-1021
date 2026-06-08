@@ -365,6 +365,55 @@ export default function LeadAssignment() {
               />
             </div>
           </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mt-3">
+            <div className="md:col-span-2">
+              <label className="text-xs text-slate-500 mb-1 block">分配时间</label>
+              <div className="flex bg-slate-100 rounded-lg p-0.5">
+                {[
+                  { key: '', label: '全部' },
+                  { key: 'today', label: '今天' },
+                  { key: '7days', label: '近7天' },
+                  { key: '30days', label: '近30天' },
+                  { key: 'custom', label: '自定义' },
+                ].map((item) => (
+                  <button
+                    key={item.key}
+                    onClick={() => setAssignmentFilters({ dateRange: item.key || undefined, startDate: undefined, endDate: undefined })}
+                    className={cn(
+                      'flex-1 px-2 py-1 text-xs font-medium rounded-md transition-all',
+                      (assignmentFilters.dateRange || '') === item.key
+                        ? 'bg-white text-primary-600 shadow-sm'
+                        : 'text-slate-600 hover:text-slate-800'
+                    )}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {assignmentFilters.dateRange === 'custom' && (
+              <>
+                <div>
+                  <label className="text-xs text-slate-500 mb-1 block">开始日期</label>
+                  <input
+                    type="date"
+                    value={assignmentFilters.startDate || ''}
+                    onChange={(e) => setAssignmentFilters({ startDate: e.target.value || undefined })}
+                    className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 mb-1 block">结束日期</label>
+                  <input
+                    type="date"
+                    value={assignmentFilters.endDate || ''}
+                    onChange={(e) => setAssignmentFilters({ endDate: e.target.value || undefined })}
+                    className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400"
+                  />
+                </div>
+              </>
+            )}
+          </div>
         </div>
         
         <div className="divide-y divide-slate-50 max-h-[480px] overflow-y-auto">

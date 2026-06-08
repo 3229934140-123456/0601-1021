@@ -342,37 +342,38 @@ export default function Reports() {
                       </div>
                       
                       <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <p className="text-xs text-slate-500">总客户数</p>
-                          <p className="text-lg font-bold text-slate-800">{report.totalCustomers}</p>
+                        <div className="bg-success-50/50 rounded-lg p-3">
+                          <p className="text-xs text-slate-500">新增客户</p>
+                          <p className="text-lg font-bold text-success-600">+{report.periodNewCustomers}</p>
                         </div>
-                        <div>
-                          <p className="text-xs text-slate-500">{periodLabels[reportFilters.dateRange]}新增</p>
-                          <p className="text-lg font-bold text-success-600">{report.periodNewCustomers}</p>
+                        <div className="bg-primary-50/50 rounded-lg p-3">
+                          <p className="text-xs text-slate-500">新增商机</p>
+                          <p className="text-lg font-bold text-primary-600">+{report.periodNewOpps}</p>
                         </div>
-                        <div>
-                          <p className="text-xs text-slate-500">商机总数</p>
-                          <p className="text-lg font-bold text-slate-800">{report.totalOpportunities}</p>
+                        <div className="bg-accent-50/50 rounded-lg p-3">
+                          <p className="text-xs text-slate-500">跟进次数</p>
+                          <p className="text-lg font-bold text-accent-600">{report.followUpCount}</p>
                         </div>
-                        <div>
-                          <p className="text-xs text-slate-500">成交商机</p>
-                          <p className="text-lg font-bold text-primary-600">{report.wonOpportunities}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-slate-500">商机总额</p>
-                          <p className="text-lg font-bold text-slate-800">{formatMoney(report.totalAmount)}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-slate-500">{periodLabels[reportFilters.dateRange]}成交</p>
+                        <div className="bg-success-50/50 rounded-lg p-3">
+                          <p className="text-xs text-slate-500">成交金额</p>
                           <p className="text-lg font-bold text-success-600">{formatMoney(report.periodWonAmount)}</p>
                         </div>
-                        <div>
-                          <p className="text-xs text-slate-500">跟进次数</p>
-                          <p className="text-lg font-bold text-slate-800">{report.followUpCount}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-slate-500">异常数量</p>
-                          <p className="text-lg font-bold text-warning-600">{report.exceptionCount}</p>
+                      </div>
+                      <div className="mt-4 pt-4 border-t border-slate-100">
+                        <p className="text-xs text-slate-400 mb-3">累计数据</p>
+                        <div className="grid grid-cols-3 gap-3">
+                          <div>
+                            <p className="text-xs text-slate-500">总客户</p>
+                            <p className="text-sm font-semibold text-slate-700">{report.totalCustomers}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500">总商机</p>
+                            <p className="text-sm font-semibold text-slate-700">{report.totalOpportunities}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500">商机总额</p>
+                            <p className="text-sm font-semibold text-slate-700">{formatMoney(report.totalAmount)}</p>
+                          </div>
                         </div>
                       </div>
                     </div>

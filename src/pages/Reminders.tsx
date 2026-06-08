@@ -22,26 +22,16 @@ export default function Reminders() {
   
   const [handleModal, setHandleModal] = useState<{ open: boolean; reminderId?: string }>({ open: false });
   const [handleNote, setHandleNote] = useState('');
-  const [searchKeyword, setSearchKeyword] = useState('');
   
   const filteredRemindersByScope = useMemo(
     () => getFilteredRemindersByScope(), 
     [getFilteredRemindersByScope, followUpFilters, reminders]
   );
   
-  const filteredReminders = useMemo(() => {
-    const list = getFilteredReminders();
-    if (!searchKeyword) return list;
-    const kw = searchKeyword.toLowerCase();
-    return list.filter(r => 
-      r.title.toLowerCase().includes(kw) ||
-      r.content.toLowerCase().includes(kw) ||
-      r.salesPersonName.toLowerCase().includes(kw) ||
-      (r.customerName && r.customerName.toLowerCase().includes(kw)) ||
-      (r.handleNote && r.handleNote.toLowerCase().includes(kw)) ||
-      (r.handledBy && r.handledBy.toLowerCase().includes(kw))
-    );
-  }, [getFilteredReminders, reminderFilters, followUpFilters, reminders, searchKeyword]);
+  const filteredReminders = useMemo(
+    () => getFilteredReminders(), 
+    [getFilteredReminders, reminderFilters, followUpFilters, reminders]
+  );
   
   const tabs = [
     { key: 'all' as const, label: '全部提醒', count: filteredRemindersByScope.filter(r => !r.isCompleted).length },
@@ -261,14 +251,60 @@ export default function Reminders() {
                 <input
                   type="text"
                   placeholder="搜索标题、内容、备注..."
-                  value={searchKeyword}
-                  onChange={(e) => setSearchKeyword(e.target.value)}
+                  value={reminderFilters.keyword || ''}
+                  onChange={(e) => setReminderFilters({ keyword: e.target.value || undefined })}
                   className="pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400 w-56"
                 />
               </div>
             </div>
           </div>
         </div>
+        
+        {reminderFilters.activeTab === 'completed' && (
+          <div className="px-4 py-3 border-t border-slate-100 bg-slate-50/50">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              <div>
+                <label className="text-xs text-slate-500 mb-1 block">处理人</label>
+                <select
+                  value={reminderFilters.handledBy || ''}
+                  onChange={(e) => setReminderFilters({ handledBy: e.target.value || undefined })}
+                  className="w-full px-2 py-1.5 border border-slate-200 bg-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400"
+                >
+                  <option value="">全部处理人</option>
+                  {salesPeople.map(sp => (
+                    <option key={sp.id} value={sp.name}>{sp.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 mb-1 block">处理开始日期</label>
+                <input
+                  type="date"
+                  value={reminderFilters.handleDateStart || ''}
+                  onChange={(e) => setReminderFilters({ handleDateStart: e.target.value || undefined })}
+                  className="w-full px-2 py-1.5 border border-slate-200 bg-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 mb-1 block">处理结束日期</label>
+                <input
+                  type="date"
+                  value={reminderFilters.handleDateEnd || ''}
+                  onChange={(e) => setReminderFilters({ handleDateEnd: e.target.value || undefined })}
+                  className="w-full px-2 py-1.5 border border-slate-200 bg-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400"
+                />
+              </div>
+              <div className="flex items-end">
+                <button
+                  onClick={() => setReminderFilters({ handledBy: undefined, handleDateStart: undefined, handleDateEnd: undefined })}
+                  className="w-full px-3 py-1.5 border border-slate-200 text-slate-600 rounded-lg text-sm hover:bg-white transition-colors"
+                >
+                  重置筛选
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         
         <div className="divide-y divide-slate-50">
           {filteredReminders.map((reminder, index) => (

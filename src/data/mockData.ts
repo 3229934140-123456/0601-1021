@@ -371,6 +371,10 @@ function generateDailyReport(team: Team, customers: Customer[], opportunities: O
     }).length,
     activeCustomers: teamCustomers.filter(c => c.status === 'active').length,
     totalOpportunities: teamOpps.length,
+    newOpportunities: teamOpps.filter(o => {
+      const daysSince = Math.floor((Date.now() - new Date(o.createdAt).getTime()) / (1000 * 60 * 60 * 24));
+      return daysSince <= 7;
+    }).length,
     wonOpportunities: teamOpps.filter(o => o.status === 'won').length,
     lostOpportunities: teamOpps.filter(o => o.status === 'lost').length,
     totalAmount: teamOpps.reduce((sum, o) => sum + o.amount, 0),
@@ -386,7 +390,7 @@ function generateDailyReport(team: Team, customers: Customer[], opportunities: O
 
 function generateTrendData(): TrendDataPoint[] {
   const data: TrendDataPoint[] = [];
-  for (let i = 29; i >= 0; i--) {
+  for (let i = 89; i >= 0; i--) {
     const date = new Date();
     date.setDate(date.getDate() - i);
     data.push({
@@ -398,6 +402,88 @@ function generateTrendData(): TrendDataPoint[] {
     });
   }
   return data;
+}
+
+function generateTeamDailyReports(team: Team, customers: Customer[], opportunities: Opportunity[], followUps: FollowUpRecord[]): DailyReport[] {
+  const reports: DailyReport[] = [];
+  const teamCustomers = customers.filter(c => c.teamId === team.id);
+  const teamCustomerIds = teamCustomers.map(c => c.id);
+  const teamOpps = opportunities.filter(o => teamCustomerIds.includes(o.customerId));
+  const teamFollowUps = followUps.filter(f => teamCustomerIds.includes(f.customerId));
+  
+  for (let i = 89; i >= 0; i--) {
+    const date = new Date();
+    date.setDate(date.getDate() - i);
+    const dateStr = date.toISOString().split('T')[0];
+    const dateTime = date.getTime();
+    const dayStart = new Date(dateStr).getTime();
+    const dayEnd = dayStart + 24 * 60 * 60 * 1000;
+    
+    const dayNewCustomers = teamCustomers.filter(c => {
+      const t = new Date(c.createdAt).getTime();
+      return t >= dayStart && t < dayEnd;
+    }).length;
+    
+    const dayNewOpps = teamOpps.filter(o => {
+      const t = new Date(o.createdAt).getTime();
+      return t >= dayStart && t < dayEnd;
+    }).length;
+    
+    const dayFollowUps = teamFollowUps.filter(f => {
+      const t = new Date(f.date).getTime();
+      return t >= dayStart && t < dayEnd;
+    }).length;
+    
+    const dayWonOpps = teamOpps.filter(o => {
+      if (o.status !== 'won') return false;
+      const t = new Date(o.updatedAt).getTime();
+      return t >= dayStart && t < dayEnd;
+    });
+    const dayWonAmount = dayWonOpps.reduce((s, o) => s + o.amount, 0);
+    
+    const cumulativeCustomers = teamCustomers.filter(c => 
+      new Date(c.createdAt).getTime() < dayEnd
+    ).length;
+    
+    const cumulativeOpps = teamOpps.filter(o => 
+      new Date(o.createdAt).getTime() < dayEnd
+    ).length;
+    
+    const cumulativeWonOpps = teamOpps.filter(o => 
+      o.status === 'won' && new Date(o.updatedAt).getTime() < dayEnd
+    ).length;
+    
+    const cumulativeAmount = teamOpps.filter(o => 
+      new Date(o.createdAt).getTime() < dayEnd
+    ).reduce((s, o) => s + o.amount, 0);
+    
+    const cumulativeWonAmount = teamOpps.filter(o => 
+      o.status === 'won' && new Date(o.updatedAt).getTime() < dayEnd
+    ).reduce((s, o) => s + o.amount, 0);
+    
+    reports.push({
+      date: dateStr,
+      teamId: team.id,
+      teamName: team.name,
+      totalCustomers: cumulativeCustomers,
+      newCustomers: dayNewCustomers,
+      activeCustomers: Math.floor(cumulativeCustomers * 0.85),
+      totalOpportunities: cumulativeOpps,
+      newOpportunities: dayNewOpps,
+      wonOpportunities: cumulativeWonOpps,
+      lostOpportunities: Math.floor(cumulativeOpps * 0.15),
+      totalAmount: cumulativeAmount,
+      wonAmount: cumulativeWonAmount,
+      followUpCount: dayFollowUps,
+      reminderCount: Math.floor(cumulativeCustomers * 0.15),
+      completedReminders: Math.floor(cumulativeCustomers * 0.08),
+      exceptionCount: Math.floor(cumulativeOpps * 0.1),
+      newLeads: Math.floor(Math.random() * 5) + 2,
+      convertedLeads: Math.floor(Math.random() * 3) + 1,
+    });
+  }
+  
+  return reports;
 }
 
 function generateLostReasons(): LostReasonStat[] {
@@ -489,7 +575,7 @@ mockData.opportunities = opportunities;
 mockData.followUpRecords = generateFollowUps(customers);
 mockData.reminders = generateReminders(customers, opportunities);
 mockData.exceptions = generateExceptions(customers, opportunities);
-mockData.dailyReports = teams.map(t => generateDailyReport(t, customers, opportunities));
+mockData.dailyReports = teams.flatMap(t => generateTeamDailyReports(t, customers, opportunities, mockData.followUpRecords));
 mockData.industryStats = generateIndustryStats(customers, opportunities);
 mockData.regionStats = generateRegionStats(customers, opportunities);
 mockData.exclusions = generateExclusions(customers);

@@ -146,6 +146,7 @@ export interface DailyReport {
   newCustomers: number;
   activeCustomers: number;
   totalOpportunities: number;
+  newOpportunities: number;
   wonOpportunities: number;
   lostOpportunities: number;
   totalAmount: number;

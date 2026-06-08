@@ -40,10 +40,15 @@ interface FollowUpFilters {
 interface ReminderFilters {
   type: string;
   activeTab: 'all' | 'today' | 'high' | 'completed';
+  keyword?: string;
+  handledBy?: string;
+  handleDateStart?: string;
+  handleDateEnd?: string;
 }
 
 interface ExclusionFilters {
-  keyword?: string;
+  reasonKeyword?: string;
+  customerKeyword?: string;
   operator?: string;
 }
 
@@ -56,6 +61,9 @@ interface AssignmentFilters {
   keyword?: string;
   salesPersonId?: string;
   strategy?: string;
+  dateRange?: 'today' | '7days' | '30days' | 'custom';
+  startDate?: string;
+  endDate?: string;
 }
 
 interface CRMState {
@@ -341,6 +349,34 @@ export const useCRMStore = create<CRMStore>()(
           result = result.filter(r => !r.isCompleted);
         }
         
+        if (reminderFilters.keyword) {
+          const kw = reminderFilters.keyword.toLowerCase();
+          result = result.filter(r => 
+            r.title.toLowerCase().includes(kw) ||
+            r.content.toLowerCase().includes(kw) ||
+            r.salesPersonName.toLowerCase().includes(kw) ||
+            (r.customerName && r.customerName.toLowerCase().includes(kw)) ||
+            (r.handleNote && r.handleNote.toLowerCase().includes(kw)) ||
+            (r.handledBy && r.handledBy.toLowerCase().includes(kw))
+          );
+        }
+        
+        if (reminderFilters.activeTab === 'completed') {
+          if (reminderFilters.handledBy) {
+            result = result.filter(r => r.handledBy === reminderFilters.handledBy);
+          }
+          
+          if (reminderFilters.handleDateStart) {
+            const start = new Date(reminderFilters.handleDateStart).getTime();
+            result = result.filter(r => r.handledAt && new Date(r.handledAt).getTime() >= start);
+          }
+          
+          if (reminderFilters.handleDateEnd) {
+            const end = new Date(reminderFilters.handleDateEnd).getTime() + 24 * 60 * 60 * 1000;
+            result = result.filter(r => r.handledAt && new Date(r.handledAt).getTime() < end);
+          }
+        }
+        
         return result;
       },
       
@@ -348,12 +384,14 @@ export const useCRMStore = create<CRMStore>()(
         const { exclusions, exclusionFilters } = get();
         let result = [...exclusions];
         
-        if (exclusionFilters.keyword) {
-          const kw = exclusionFilters.keyword.toLowerCase();
-          result = result.filter(e => 
-            e.customerName.toLowerCase().includes(kw) ||
-            e.reason.toLowerCase().includes(kw)
-          );
+        if (exclusionFilters.reasonKeyword) {
+          const kw = exclusionFilters.reasonKeyword.toLowerCase();
+          result = result.filter(e => e.reason.toLowerCase().includes(kw));
+        }
+        
+        if (exclusionFilters.customerKeyword) {
+          const kw = exclusionFilters.customerKeyword.toLowerCase();
+          result = result.filter(e => e.customerName.toLowerCase().includes(kw));
         }
         
         if (exclusionFilters.operator) {
@@ -364,25 +402,25 @@ export const useCRMStore = create<CRMStore>()(
       },
       
       getFilteredTrendData: () => {
-        const { trendData, reportFilters, dailyReports, teams } = get();
+        const { trendData, reportFilters, dailyReports } = get();
         const days = reportFilters.dateRange === '7days' ? 7 : 
                      reportFilters.dateRange === '30days' ? 30 : 90;
-        let result = trendData.slice(-days);
         
         if (reportFilters.teamId) {
           const teamReports = dailyReports
             .filter(d => d.teamId === reportFilters.teamId)
+            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
             .slice(-days);
-          result = teamReports.map(d => ({
+          return teamReports.map(d => ({
             date: d.date,
             newCustomers: d.newCustomers,
-            newOpportunities: d.totalOpportunities > 0 ? Math.floor(d.totalOpportunities / 30) : 0,
+            newOpportunities: d.newOpportunities,
             followUps: d.followUpCount,
             wonAmount: d.wonAmount,
           }));
         }
         
-        return result;
+        return trendData.slice(-days);
       },
       
       getFilteredAssignments: () => {
@@ -404,6 +442,33 @@ export const useCRMStore = create<CRMStore>()(
             a.leadCompany.toLowerCase().includes(kw) ||
             a.salesPersonName.toLowerCase().includes(kw)
           );
+        }
+        
+        const now = new Date();
+        const today = now.toISOString().split('T')[0];
+        
+        if (assignmentFilters.dateRange === 'today') {
+          const start = new Date(today).getTime();
+          const end = start + 24 * 60 * 60 * 1000;
+          result = result.filter(a => {
+            const t = new Date(a.assignedAt).getTime();
+            return t >= start && t < end;
+          });
+        } else if (assignmentFilters.dateRange === '7days') {
+          const start = now.getTime() - 7 * 24 * 60 * 60 * 1000;
+          result = result.filter(a => new Date(a.assignedAt).getTime() >= start);
+        } else if (assignmentFilters.dateRange === '30days') {
+          const start = now.getTime() - 30 * 24 * 60 * 60 * 1000;
+          result = result.filter(a => new Date(a.assignedAt).getTime() >= start);
+        } else if (assignmentFilters.dateRange === 'custom') {
+          if (assignmentFilters.startDate) {
+            const start = new Date(assignmentFilters.startDate).getTime();
+            result = result.filter(a => new Date(a.assignedAt).getTime() >= start);
+          }
+          if (assignmentFilters.endDate) {
+            const end = new Date(assignmentFilters.endDate).getTime() + 24 * 60 * 60 * 1000;
+            result = result.filter(a => new Date(a.assignedAt).getTime() < end);
+          }
         }
         
         return result.sort((a, b) => new Date(b.assignedAt).getTime() - new Date(a.assignedAt).getTime());

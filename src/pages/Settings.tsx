@@ -185,8 +185,8 @@ export default function SettingsPage() {
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400"
                   >
                     <option value="">全部操作人</option>
-                    {salesPeople.map(sp => (
-                      <option key={sp.id} value={sp.name}>{sp.name}</option>
+                    {[...new Set(exclusions.map(e => e.excludedBy))].sort().map((name) => (
+                      <option key={name} value={name}>{name}</option>
                     ))}
                   </select>
                 </div>
@@ -195,8 +195,8 @@ export default function SettingsPage() {
                   <input
                     type="text"
                     placeholder="搜索排除原因..."
-                    value={exclusionFilters.keyword || ''}
-                    onChange={(e) => setExclusionFilters({ keyword: e.target.value || undefined })}
+                    value={exclusionFilters.reasonKeyword || ''}
+                    onChange={(e) => setExclusionFilters({ reasonKeyword: e.target.value || undefined })}
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400"
                   />
                 </div>
