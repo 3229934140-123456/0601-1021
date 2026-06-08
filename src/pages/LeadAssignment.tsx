@@ -179,7 +179,6 @@ export default function LeadAssignment() {
                     </div>
                     <div className="flex items-center gap-2">
                       <select
-                        placeholder="选择负责人"
                         className="px-2 py-1 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20"
                         onChange={(e) => {
                           if (e.target.value) {

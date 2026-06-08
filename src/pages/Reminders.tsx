@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Bell, Check, Calendar, User, AlertTriangle, Clock, Target, CheckCircle, Filter } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Bell, Check, Calendar, User, AlertTriangle, Clock, Target, CheckCircle, Filter, UserCheck } from 'lucide-react';
 import { useCRMStore } from '@/store/useCRMStore';
 import { formatDate, getPriorityColor, getPriorityLabel } from '@/utils/format';
 import { cn } from '@/lib/utils';
@@ -7,15 +7,42 @@ import { cn } from '@/lib/utils';
 type TabType = 'all' | 'today' | 'high' | 'completed';
 
 export default function Reminders() {
-  const { reminders, markReminderRead, markReminderCompleted } = useCRMStore();
+  const { 
+    reminders, 
+    teams,
+    salesPeople,
+    followUpFilters,
+    setFollowUpFilters,
+    getFilteredReminders,
+    markReminderRead, 
+    markReminderCompleted,
+    markAllRemindersRead,
+  } = useCRMStore();
+  
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [selectedType, setSelectedType] = useState<string>('all');
   
+  const filteredRemindersByScope = useMemo(
+    () => getFilteredReminders(), 
+    [getFilteredReminders, followUpFilters, reminders]
+  );
+  
+  const filteredReminders = useMemo(() => {
+    return filteredRemindersByScope.filter(r => {
+      if (activeTab === 'today' && r.type !== 'visit') return false;
+      if (activeTab === 'high' && r.priority !== 'high') return false;
+      if (activeTab === 'completed' && !r.isCompleted) return false;
+      if (activeTab !== 'completed' && r.isCompleted) return false;
+      if (selectedType !== 'all' && r.type !== selectedType) return false;
+      return true;
+    });
+  }, [filteredRemindersByScope, activeTab, selectedType]);
+  
   const tabs: { key: TabType; label: string; count: number }[] = [
-    { key: 'all', label: '全部提醒', count: reminders.length },
-    { key: 'today', label: '今日必访', count: reminders.filter(r => r.type === 'visit').length },
-    { key: 'high', label: '高优先级', count: reminders.filter(r => r.priority === 'high' && !r.isCompleted).length },
-    { key: 'completed', label: '已处理', count: reminders.filter(r => r.isCompleted).length },
+    { key: 'all', label: '全部提醒', count: filteredRemindersByScope.filter(r => !r.isCompleted).length },
+    { key: 'today', label: '今日必访', count: filteredRemindersByScope.filter(r => r.type === 'visit' && !r.isCompleted).length },
+    { key: 'high', label: '高优先级', count: filteredRemindersByScope.filter(r => r.priority === 'high' && !r.isCompleted).length },
+    { key: 'completed', label: '已处理', count: filteredRemindersByScope.filter(r => r.isCompleted).length },
   ];
   
   const typeOptions = [
@@ -46,15 +73,6 @@ export default function Reminders() {
     }
   };
   
-  const filteredReminders = reminders.filter(r => {
-    if (activeTab === 'today' && r.type !== 'visit') return false;
-    if (activeTab === 'high' && r.priority !== 'high') return false;
-    if (activeTab === 'completed' && !r.isCompleted) return false;
-    if (activeTab !== 'completed' && r.isCompleted) return false;
-    if (selectedType !== 'all' && r.type !== selectedType) return false;
-    return true;
-  });
-  
   const handleComplete = (id: string) => {
     markReminderCompleted(id);
   };
@@ -63,9 +81,33 @@ export default function Reminders() {
     markReminderRead(id);
   };
   
-  const pendingCount = reminders.filter(r => !r.isCompleted).length;
-  const highPriorityCount = reminders.filter(r => r.priority === 'high' && !r.isCompleted).length;
-  const todayCount = reminders.filter(r => r.type === 'visit' && !r.isCompleted).length;
+  const handleMarkAllRead = () => {
+    markAllRemindersRead();
+  };
+  
+  const handleTeamChange = (teamId: string) => {
+    setFollowUpFilters({ teamId: teamId || undefined, salesPersonId: undefined });
+  };
+  
+  const handleSalesPersonChange = (salesPersonId: string) => {
+    setFollowUpFilters({ salesPersonId: salesPersonId || undefined });
+  };
+  
+  const filteredSalesPeople = followUpFilters.teamId
+    ? salesPeople.filter(sp => sp.teamId === followUpFilters.teamId)
+    : salesPeople;
+  
+  const pendingCount = filteredRemindersByScope.filter(r => !r.isCompleted).length;
+  const highPriorityCount = filteredRemindersByScope.filter(r => r.priority === 'high' && !r.isCompleted).length;
+  const todayCount = filteredRemindersByScope.filter(r => r.type === 'visit' && !r.isCompleted).length;
+  const completedCount = filteredRemindersByScope.filter(r => r.isCompleted).length;
+  const unreadCount = filteredRemindersByScope.filter(r => !r.isRead && !r.isCompleted).length;
+  
+  const formatHandledAt = (dateStr?: string) => {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    return `${date.toLocaleDateString()} ${date.toLocaleTimeString().slice(0, 5)}`;
+  };
   
   return (
     <div className="space-y-6">
@@ -76,6 +118,22 @@ export default function Reminders() {
         </div>
         <div className="flex items-center gap-2">
           <select
+            value={followUpFilters.teamId || ''}
+            onChange={(e) => handleTeamChange(e.target.value)}
+            className="px-3 py-2 border border-slate-200 bg-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400"
+          >
+            <option value="">全部团队</option>
+            {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+          <select
+            value={followUpFilters.salesPersonId || ''}
+            onChange={(e) => handleSalesPersonChange(e.target.value)}
+            className="px-3 py-2 border border-slate-200 bg-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400"
+          >
+            <option value="">全部人员</option>
+            {filteredSalesPeople.map(sp => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
+          </select>
+          <select
             value={selectedType}
             onChange={(e) => setSelectedType(e.target.value)}
             className="px-3 py-2 border border-slate-200 bg-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400"
@@ -84,8 +142,18 @@ export default function Reminders() {
               <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </select>
-          <button className="px-4 py-2 bg-gradient-to-r from-primary-500 to-primary-600 text-white rounded-lg text-sm font-medium hover:shadow-lg hover:shadow-primary-500/30 transition-all">
-            全部已读
+          <button 
+            onClick={handleMarkAllRead}
+            disabled={unreadCount === 0}
+            className={cn(
+              'px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2',
+              unreadCount > 0
+                ? 'bg-gradient-to-r from-primary-500 to-primary-600 text-white hover:shadow-lg hover:shadow-primary-500/30'
+                : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+            )}
+          >
+            <CheckCircle className="w-4 h-4" />
+            全部已读 {unreadCount > 0 && `(${unreadCount})`}
           </button>
         </div>
       </div>
@@ -134,7 +202,7 @@ export default function Reminders() {
             </div>
             <div>
               <p className="text-sm text-slate-500">已处理</p>
-              <p className="text-2xl font-bold text-slate-600">{reminders.filter(r => r.isCompleted).length}</p>
+              <p className="text-2xl font-bold text-slate-600">{completedCount}</p>
             </div>
           </div>
         </div>
@@ -173,7 +241,7 @@ export default function Reminders() {
               className={cn(
                 'p-4 transition-all',
                 reminder.isRead ? 'bg-white' : 'bg-primary-50/30',
-                reminder.isCompleted ? 'opacity-60' : 'hover:bg-slate-50'
+                reminder.isCompleted ? 'opacity-60' : 'hover:bg-slate-50 cursor-pointer'
               )}
               onClick={() => !reminder.isRead && handleRead(reminder.id)}
               style={{ animationDelay: `${index * 20}ms` }}
@@ -219,6 +287,15 @@ export default function Reminders() {
                         {reminder.customerName && <span>客户：{reminder.customerName}</span>}
                         <span>到期：{formatDate(reminder.dueDate)}</span>
                       </div>
+                      
+                      {reminder.isCompleted && reminder.handledAt && (
+                        <div className="flex items-center gap-1 mt-2 text-xs text-slate-400">
+                          <UserCheck className="w-3.5 h-3.5" />
+                          <span>
+                            {reminder.handledBy || '系统'} 于 {formatHandledAt(reminder.handledAt)} 处理
+                          </span>
+                        </div>
+                      )}
                     </div>
                     
                     <div className="flex items-center gap-2 flex-shrink-0">

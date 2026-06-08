@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Search, Filter, Users, AlertCircle, Copy, Star, ChevronDown, RefreshCw, Download, X } from 'lucide-react';
 import { useCRMStore } from '@/store/useCRMStore';
 import { formatDate, getLevelColor, getStatusColor, getStatusLabel } from '@/utils/format';
@@ -7,20 +7,39 @@ import { cn } from '@/lib/utils';
 export default function CustomerScan() {
   const {
     customers,
-    filteredCustomers,
     customerFilters,
     setCustomerFilters,
     teams,
-    longNoContactCustomers,
-    duplicateCustomers,
-    highValueCustomers,
+    getFilteredCustomers,
     excludeCustomer,
+    batchExcludeCustomers,
+    batchMarkHighValue,
   } = useCRMStore();
   
   const [showFilters, setShowFilters] = useState(false);
   const [selectedCustomers, setSelectedCustomers] = useState<string[]>([]);
-  const [excludeModal, setExcludeModal] = useState<{ open: boolean; customerId?: string }>({ open: false });
+  const [excludeModal, setExcludeModal] = useState<{ open: boolean; customerId?: string; isBatch?: boolean }>({ open: false });
   const [excludeReason, setExcludeReason] = useState('');
+  
+  const filteredCustomers = useMemo(
+    () => getFilteredCustomers(), 
+    [getFilteredCustomers, customerFilters, customers]
+  );
+  
+  const longNoContactCustomers = useMemo(
+    () => filteredCustomers.filter(c => c.daysSinceLastContact > 30 && c.status === 'active'),
+    [filteredCustomers]
+  );
+  
+  const duplicateCustomers = useMemo(
+    () => filteredCustomers.filter(c => c.isDuplicate),
+    [filteredCustomers]
+  );
+  
+  const highValueCustomers = useMemo(
+    () => filteredCustomers.filter(c => c.isHighValue),
+    [filteredCustomers]
+  );
   
   const industries = [...new Set(customers.map(c => c.industry))];
   const regions = [...new Set(customers.map(c => c.region))];
@@ -43,11 +62,29 @@ export default function CustomerScan() {
   };
   
   const handleExclude = () => {
-    if (excludeModal.customerId && excludeReason) {
+    if (excludeModal.isBatch && excludeReason) {
+      batchExcludeCustomers(selectedCustomers, excludeReason);
+      setSelectedCustomers([]);
+      setExcludeModal({ open: false });
+      setExcludeReason('');
+    } else if (excludeModal.customerId && excludeReason) {
       excludeCustomer(excludeModal.customerId, excludeReason);
       setExcludeModal({ open: false });
       setExcludeReason('');
     }
+  };
+  
+  const handleBatchHighValue = () => {
+    const hasHighValue = selectedCustomers.some(id => {
+      const c = customers.find(cust => cust.id === id);
+      return c?.isHighValue;
+    });
+    const allHighValue = hasHighValue ? false : true;
+    batchMarkHighValue(selectedCustomers, allHighValue);
+  };
+  
+  const handleBatchExclude = () => {
+    setExcludeModal({ open: true, isBatch: true });
   };
   
   const clearFilters = () => {
@@ -77,6 +114,14 @@ export default function CustomerScan() {
     customerFilters.onlyHighValue,
     customerFilters.onlyDuplicate,
   ].filter(Boolean).length;
+  
+  const selectedAllHighValue = useMemo(() => {
+    if (selectedCustomers.length === 0) return false;
+    return selectedCustomers.every(id => {
+      const c = customers.find(cust => cust.id === id);
+      return c?.isHighValue;
+    });
+  }, [selectedCustomers, customers]);
   
   return (
     <div className="space-y-6">
@@ -299,17 +344,30 @@ export default function CustomerScan() {
             已选择 <span className="font-semibold">{selectedCustomers.length}</span> 个客户
           </span>
           <div className="flex items-center gap-2">
-            <button className="px-3 py-1.5 bg-white border border-primary-200 text-primary-600 rounded-lg text-sm font-medium hover:bg-primary-50 transition-colors">
-              批量标记高价值
+            <button 
+              onClick={handleBatchHighValue}
+              className={cn(
+                'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1',
+                selectedAllHighValue
+                  ? 'bg-white border border-primary-200 text-primary-600 hover:bg-primary-50'
+                  : 'bg-white border border-primary-200 text-primary-600 hover:bg-primary-50'
+              )}
+            >
+              <Star className="w-4 h-4" />
+              {selectedAllHighValue ? '取消高价值' : '批量标记高价值'}
             </button>
-            <button className="px-3 py-1.5 bg-white border border-primary-200 text-primary-600 rounded-lg text-sm font-medium hover:bg-primary-50 transition-colors">
+            <button 
+              onClick={handleBatchExclude}
+              className="px-3 py-1.5 bg-white border border-danger-200 text-danger-600 rounded-lg text-sm font-medium hover:bg-danger-50 transition-colors flex items-center gap-1"
+            >
+              <X className="w-4 h-4" />
               批量排除
             </button>
             <button 
               onClick={() => setSelectedCustomers([])}
-              className="text-primary-500 hover:text-primary-700"
+              className="text-primary-500 hover:text-primary-700 ml-2"
             >
-              <X className="w-4 h-4" />
+              取消选择
             </button>
           </div>
         </div>
@@ -475,9 +533,14 @@ export default function CustomerScan() {
       {excludeModal.open && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in">
           <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4 animate-slide-up">
-            <h3 className="text-lg font-semibold text-slate-800 mb-4">排除客户</h3>
+            <h3 className="text-lg font-semibold text-slate-800 mb-4">
+              {excludeModal.isBatch ? '批量排除客户' : '排除客户'}
+            </h3>
             <p className="text-sm text-slate-500 mb-4">
-              排除后该客户将不再出现在扫描结果和统计数据中，您可以在设置中恢复。
+              {excludeModal.isBatch 
+                ? `将排除 ${selectedCustomers.length} 个客户，排除后这些客户将不再出现在扫描结果和统计数据中，您可以在设置中恢复。`
+                : '排除后该客户将不再出现在扫描结果和统计数据中，您可以在设置中恢复。'
+              }
             </p>
             <div className="mb-4">
               <label className="text-sm text-slate-600 mb-1.5 block">排除原因</label>
@@ -498,7 +561,13 @@ export default function CustomerScan() {
               </button>
               <button
                 onClick={handleExclude}
-                className="px-4 py-2 bg-danger-500 text-white rounded-lg text-sm font-medium hover:bg-danger-600 transition-colors"
+                disabled={!excludeReason.trim()}
+                className={cn(
+                  'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+                  excludeReason.trim()
+                    ? 'bg-danger-500 text-white hover:bg-danger-600'
+                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                )}
               >
                 确认排除
               </button>

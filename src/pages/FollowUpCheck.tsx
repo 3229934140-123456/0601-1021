@@ -1,38 +1,55 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { ClipboardCheck, CheckCircle, AlertCircle, XCircle, Clock, User, Calendar, FileText } from 'lucide-react';
 import { useCRMStore } from '@/store/useCRMStore';
 import { formatDate, getFollowUpTypeColor, getFollowUpTypeLabel, getStatusColor, getStatusLabel } from '@/utils/format';
 import { cn } from '@/lib/utils';
 
 export default function FollowUpCheck() {
-  const { followUpRecords, customers, opportunities, teams } = useCRMStore();
+  const { 
+    teams, 
+    salesPeople, 
+    followUpFilters, 
+    setFollowUpFilters,
+    followUpRecords,
+    customers,
+    opportunities,
+    getFilteredFollowUps,
+    getFilteredIncompleteFollowUps,
+    getFilteredIncompleteContacts,
+    getFilteredLongStageOpps,
+  } = useCRMStore();
+  
   const [activeTab, setActiveTab] = useState<'records' | 'incomplete' | 'contacts' | 'stages'>('records');
-  const [selectedTeam, setSelectedTeam] = useState('');
-  const [selectedSalesPerson, setSelectedSalesPerson] = useState('');
   
-  const salesPeople = useCRMStore(state => state.salesPeople);
+  const filteredRecords = useMemo(() => getFilteredFollowUps(), [getFilteredFollowUps, followUpFilters, followUpRecords]);
+  const incompleteRecords = useMemo(() => getFilteredIncompleteFollowUps(), [getFilteredIncompleteFollowUps, followUpFilters, followUpRecords]);
+  const incompleteCustomers = useMemo(() => getFilteredIncompleteContacts(), [getFilteredIncompleteContacts, followUpFilters, customers]);
+  const longStageOpps = useMemo(() => getFilteredLongStageOpps(), [getFilteredLongStageOpps, followUpFilters, opportunities]);
   
-  const incompleteRecords = followUpRecords.filter(r => !r.isComplete);
-  const completeRecords = followUpRecords.filter(r => r.isComplete);
+  const completeRecords = filteredRecords.filter(r => r.isComplete);
   
-  const incompleteCustomers = customers.filter(c => 
-    !c.contactPerson || !c.phone || !c.email
-  );
-  
-  const longStageOpps = opportunities.filter(o => 
-    o.status === 'active' && o.daysInCurrentStage > 30
-  );
-  
-  const completenessRate = followUpRecords.length > 0
-    ? Math.round((completeRecords.length / followUpRecords.length) * 100)
+  const completenessRate = filteredRecords.length > 0
+    ? Math.round((completeRecords.length / filteredRecords.length) * 100)
     : 0;
   
   const tabs = [
-    { key: 'records', label: '跟进记录', icon: FileText, count: followUpRecords.length },
+    { key: 'records', label: '跟进记录', icon: FileText, count: filteredRecords.length },
     { key: 'incomplete', label: '不完整记录', icon: AlertCircle, count: incompleteRecords.length },
     { key: 'contacts', label: '联系人缺失', icon: User, count: incompleteCustomers.length },
     { key: 'stages', label: '阶段停留', icon: Clock, count: longStageOpps.length },
   ];
+  
+  const handleTeamChange = (teamId: string) => {
+    setFollowUpFilters({ teamId: teamId || undefined, salesPersonId: undefined });
+  };
+  
+  const handleSalesPersonChange = (salesPersonId: string) => {
+    setFollowUpFilters({ salesPersonId: salesPersonId || undefined });
+  };
+  
+  const filteredSalesPeople = followUpFilters.teamId
+    ? salesPeople.filter(sp => sp.teamId === followUpFilters.teamId)
+    : salesPeople;
   
   return (
     <div className="space-y-6">
@@ -43,20 +60,20 @@ export default function FollowUpCheck() {
         </div>
         <div className="flex items-center gap-2">
           <select
-            value={selectedTeam}
-            onChange={(e) => setSelectedTeam(e.target.value)}
+            value={followUpFilters.teamId || ''}
+            onChange={(e) => handleTeamChange(e.target.value)}
             className="px-3 py-2 border border-slate-200 bg-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400"
           >
             <option value="">全部团队</option>
             {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
           <select
-            value={selectedSalesPerson}
-            onChange={(e) => setSelectedSalesPerson(e.target.value)}
+            value={followUpFilters.salesPersonId || ''}
+            onChange={(e) => handleSalesPersonChange(e.target.value)}
             className="px-3 py-2 border border-slate-200 bg-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400"
           >
             <option value="">全部人员</option>
-            {salesPeople.map(sp => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
+            {filteredSalesPeople.map(sp => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
           </select>
         </div>
       </div>
@@ -66,7 +83,7 @@ export default function FollowUpCheck() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-slate-500">跟进记录总数</p>
-              <p className="text-2xl font-bold text-slate-800 mt-1">{followUpRecords.length}</p>
+              <p className="text-2xl font-bold text-slate-800 mt-1">{filteredRecords.length}</p>
             </div>
             <div className="w-12 h-12 rounded-xl bg-primary-50 flex items-center justify-center">
               <ClipboardCheck className="w-6 h-6 text-primary-500" />
@@ -151,7 +168,7 @@ export default function FollowUpCheck() {
         <div className="p-0">
           {activeTab === 'records' && (
             <div className="divide-y divide-slate-50">
-              {followUpRecords.slice(0, 20).map((record, index) => (
+              {filteredRecords.slice(0, 20).map((record, index) => (
                 <div key={record.id} className="p-4 hover:bg-slate-50 transition-colors">
                   <div className="flex items-start gap-4">
                     <div className={cn(
